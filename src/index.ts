@@ -1,11 +1,12 @@
-import 'dotenv/config';
-import { Telegraf } from 'telegraf';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import cron from 'node-cron';
+import "dotenv/config";
+import { Telegraf } from "telegraf";
+import { exec } from "child_process";
+import { promisify } from "util";
+import cron from "node-cron";
 
 const EXEC_PROMISE = promisify(exec);
-const ESCAPE_M2 = (text: string) => text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+const ESCAPE_M2 = (text: string) =>
+  text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
 
 const { BOT_TOKEN, GROUP_ID, ADMIN_ID } = process.env;
 if (!BOT_TOKEN || !GROUP_ID || !ADMIN_ID) {
@@ -23,8 +24,7 @@ const refreshProxy = async (): Promise<void> => {
       IP=$(curl -s4 https://api.ipify.org)
       SECRET=$(docker run --rm nineseconds/mtg:2 generate-secret --hex $DOMAIN)
       
-      docker stop mtproto-proxy >/dev/null 2>&1 || true
-      docker rm mtproto-proxy >/dev/null 2>&1 || true
+      docker rm -f mtproto-proxy >/dev/null 2>&1 || true
 
       docker run -d \
         --name mtproto-proxy \
@@ -38,62 +38,66 @@ const refreshProxy = async (): Promise<void> => {
 
     const { stdout } = await EXEC_PROMISE(sh);
 
-    const lines = stdout.trim().split('\n');
-    const proxy = lines[lines.length - 1]?.trim(); 
-    if (!proxy?.startsWith('tg://')) {
+    const lines = stdout.trim().split("\n");
+    const proxy = lines[lines.length - 1]?.trim();
+    if (!proxy?.startsWith("tg://")) {
       console.log("Proxy generation failed:", stdout);
       return;
     }
 
-    if (lastMessageId) {
-      try {
-        await bot.telegram.deleteMessage(GROUP_ID, lastMessageId);
-      } catch (err) {}
-    }
-
-    const parsedProxy = ESCAPE_M2(proxy);
-    const messageText = 
-      `*Fresh MTProto arrived\\!*\n\n` +
-      `Location: NL 🇳🇱\n` +
-      `Rotation In: 1h\n\n` +
-      `\`${parsedProxy}\``;
-
-    const msg = await bot.telegram.sendMessage(
+    await bot.telegram.sendMessage(
       GROUP_ID,
-      messageText,
+      `*Fresh MTProto arrived\\!*\n\n` +
+        `Location: NL 🇳🇱\n` +
+        `Rotation In: 1h\n\n` +
+        `\`${ESCAPE_M2(proxy)}\``,
       {
-        parse_mode: 'MarkdownV2',
+        parse_mode: "MarkdownV2",
         reply_markup: {
-          inline_keyboard: [[{ text: "Connect", url: proxy }]]
-        }
-      }
+          inline_keyboard: [[{ text: "Connect", url: proxy }]],
+        },
+      },
     );
-
-    lastMessageId = msg.message_id;
   } catch (err) {
     console.error(err);
   }
 };
 
-cron.schedule('0 * * * *', refreshProxy);
-
-bot.command('refresh', async (ctx) => {
-  if (ctx.from.id.toString() === ADMIN_ID) {
-    await ctx.reply("Refreshing MTProto...");
-    await refreshProxy();
-
-    return;
-  } 
-
-  await ctx.reply("Not enough rights.");
+// 0 * * * *
+cron.schedule("*/2 * * * *", async () => {
+  await refreshProxy();
 });
 
-bot.launch()
+bot.command("refresh", async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_ID) {
+    await ctx.reply("Not enough rights.", {
+      reply_parameters: { message_id: ctx.message.message_id },
+    });
+    return;
+  }
+
+  const msg = await ctx.reply("Refreshing MTProto...", {
+    reply_parameters: { message_id: ctx.message.message_id },
+  });
+
+  try {
+    await refreshProxy();
+    await ctx.deleteMessage(msg.message_id);
+  } catch (err) {
+    console.log(err);
+
+    await ctx.reply("Server is not responding...");
+  }
+});
+
+bot
+  .launch()
   .then(() => {
     console.log("Bot now lives in NL!");
+
     refreshProxy();
   })
   .catch((err) => console.error(err));
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
