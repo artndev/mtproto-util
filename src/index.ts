@@ -17,32 +17,31 @@ let lastMessageId: number | null = null;
 const refreshProxy = async (): Promise<void> => {
   try {
     const sh = `
-      SECRET=$(openssl rand -hex 16)
-      DOMAIN="github.com"
+      DOMAIN="ya.ru"
       PORT="9443"
+
+      IP=$(curl -s4 https://api.ipify.org)
+      SECRET=$(docker run --rm nineseconds/mtg:2 generate-secret --hex $DOMAIN)
       
-      # Clean up old containers
       docker stop mtproto-proxy >/dev/null 2>&1 || true
       docker rm mtproto-proxy >/dev/null 2>&1 || true
-      
-      # Run the new container - IMPORTANT: we add "> /dev/null" here
-      docker run -d --name mtproto-proxy --restart always -p $PORT:$PORT \\
-        nineseconds/mtg:2 run -n 1.1.1.1 -t $DOMAIN 0.0.0.0:$PORT $SECRET > /dev/null
-        
-      # Now the ONLY thing being printed to stdout is the link
-      IP=$(curl -s https://api.ipify.org)
-      echo "tg://proxy?server=$IP&port=$PORT&secret=ee$SECRET$(echo -n $DOMAIN | xxd -p)"
+
+      docker run -d \
+        --name mtproto-proxy \
+        --restart always \
+        -p $PORT:$PORT \
+        nineseconds/mtg:2 \
+        simple-run -n 1.1.1.1 -i prefer-ipv4 0.0.0.0:$PORT $SECRET
+
+      echo "tg://proxy?server=$IP&port=$PORT&secret=$SECRET"
     `;
 
     const { stdout } = await EXEC_PROMISE(sh);
-    
-    // Split by newline, take the last non-empty line, and trim whitespace
+
     const lines = stdout.trim().split('\n');
     const proxy = lines[lines.length - 1]?.trim(); 
-
-    // Validation: If it doesn't start with tg://, something went wrong with the script
     if (!proxy?.startsWith('tg://')) {
-      console.error("❌ Link generation failed. Output was:", stdout);
+      console.log("Proxy generation failed:", stdout);
       return;
     }
 
@@ -56,7 +55,7 @@ const refreshProxy = async (): Promise<void> => {
     const messageText = 
       `*Fresh MTProto arrived\\!*\n\n` +
       `Location: NL 🇳🇱\n` +
-      `Rotation In: 30m\n\n` +
+      `Rotation In: 1h\n\n` +
       `\`${parsedProxy}\``;
 
     const msg = await bot.telegram.sendMessage(
@@ -76,7 +75,7 @@ const refreshProxy = async (): Promise<void> => {
   }
 };
 
-cron.schedule('*/30 * * * *', refreshProxy);
+cron.schedule('0 * * * *', refreshProxy);
 
 bot.command('refresh', async (ctx) => {
   if (ctx.from.id.toString() === ADMIN_ID) {
@@ -91,7 +90,7 @@ bot.command('refresh', async (ctx) => {
 
 bot.launch()
   .then(() => {
-    console.log("@mtproto_tyan_bot now lives in NL!");
+    console.log("Bot now lives in NL!");
     refreshProxy();
   })
   .catch((err) => console.error(err));
