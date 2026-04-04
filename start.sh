@@ -1,17 +1,15 @@
 #!/bin/bash
-docker stop mtproto-proxy
-docker rm mtproto-proxy
-docker rmi nineseconds/mtg:2
-
-pm2 flush mtproto-util
-pm2 delete mtproto-util
+docker stop mtproto-util mtproto-proxy
+docker rm mtproto-util mtproto-proxy
 
 sudo ufw allow 9443/tcp
 sudo ufw reload
 
-npm i
-npm run build
-
-pm2 start dist/index.js --name mtproto-util
-pm2 save
-pm2 startup
+docker build -t mtproto-bot .
+docker run -d \
+  --name mtproto-util \
+  --restart always \
+  --privileged \
+  --network host \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  mtproto-bot

@@ -16,20 +16,17 @@ const bot = new Telegraf(BOT_TOKEN);
 let lastMessageId: number | null = null;
 const refreshProxy = async (): Promise<void> => {
   try {
-    const DOCKER = '/usr/bin/docker';
-    const CURL = '/usr/bin/curl';
-
     const sh = `
       DOMAIN="ya.ru"
       PORT="9443"
 
-      IP=$(${CURL} -s4 https://api.ipify.org)
-      SECRET=$(${DOCKER} run --rm nineseconds/mtg:2 generate-secret --hex $DOMAIN)
+      IP=$(curl -s4 https://api.ipify.org)
+      SECRET=$(docker run --rm nineseconds/mtg:2 generate-secret --hex $DOMAIN)
       
-      ${DOCKER} stop mtproto-proxy >/dev/null 2>&1 || true
-      ${DOCKER} rm mtproto-proxy >/dev/null 2>&1 || true
+      docker stop mtproto-proxy >/dev/null 2>&1 || true
+      docker rm mtproto-proxy >/dev/null 2>&1 || true
 
-      ${DOCKER} run -d \
+      docker run -d \
         --name mtproto-proxy \
         --restart always \
         -p $PORT:$PORT \
@@ -39,10 +36,7 @@ const refreshProxy = async (): Promise<void> => {
       echo "tg://proxy?server=$IP&port=$PORT&secret=$SECRET"
     `;
 
-    const { stdout, stderr } = await EXEC_PROMISE(sh, { shell: '/bin/bash' });
-    if (stderr) {
-        console.warn(stderr);
-    }
+    const { stdout } = await EXEC_PROMISE(sh);
 
     const lines = stdout.trim().split('\n');
     const proxy = lines[lines.length - 1]?.trim(); 
