@@ -21,18 +21,30 @@ const refreshProxy = async (): Promise<void> => {
       DOMAIN="github.com"
       PORT="9443"
       
+      # Clean up old containers
       docker stop mtproto-proxy >/dev/null 2>&1 || true
       docker rm mtproto-proxy >/dev/null 2>&1 || true
       
+      # Run the new container - IMPORTANT: we add "> /dev/null" here
       docker run -d --name mtproto-proxy --restart always -p $PORT:$PORT \\
-        nineseconds/mtg:2 run -n 1.1.1.1 -t $DOMAIN 0.0.0.0:$PORT $SECRET
+        nineseconds/mtg:2 run -n 1.1.1.1 -t $DOMAIN 0.0.0.0:$PORT $SECRET > /dev/null
         
+      # Now the ONLY thing being printed to stdout is the link
       IP=$(curl -s https://api.ipify.org)
       echo "tg://proxy?server=$IP&port=$PORT&secret=ee$SECRET$(echo -n $DOMAIN | xxd -p)"
     `;
 
     const { stdout } = await EXEC_PROMISE(sh);
-    const proxy = stdout.trim();
+    
+    // Split by newline, take the last non-empty line, and trim whitespace
+    const lines = stdout.trim().split('\n');
+    const proxy = lines[lines.length - 1]?.trim(); 
+
+    // Validation: If it doesn't start with tg://, something went wrong with the script
+    if (!proxy?.startsWith('tg://')) {
+      console.error("❌ Link generation failed. Output was:", stdout);
+      return;
+    }
 
     if (lastMessageId) {
       try {
@@ -67,7 +79,7 @@ const refreshProxy = async (): Promise<void> => {
 cron.schedule('*/30 * * * *', refreshProxy);
 
 bot.command('refresh', async (ctx) => {
-  if (ctx.from.id === Number(ADMIN_ID)) {
+  if (ctx.from.id.toString() === ADMIN_ID) {
     await ctx.reply("Refreshing MTProto...");
     await refreshProxy();
 
