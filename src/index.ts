@@ -49,7 +49,7 @@ const refreshProxy = async (): Promise<void> => {
       GROUP_ID,
       `*Fresh MTProto arrived\\!*\n\n` +
         `Location: NL 🇳🇱\n` +
-        `Rotation In: 1h\n\n` +
+        `Rotation In: 30m\n\n` +
         `\`${ESCAPE_M2(proxy)}\``,
       {
         parse_mode: "MarkdownV2",
