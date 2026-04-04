@@ -64,7 +64,7 @@ const refreshProxy = async (): Promise<void> => {
 };
 
 // 0 * * * *
-cron.schedule("*/2 * * * *", async () => {
+cron.schedule("*/30 * * * *", async () => {
   await refreshProxy();
 });
 
