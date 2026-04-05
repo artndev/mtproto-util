@@ -46,17 +46,17 @@ bot.command("delay", async (ctx) => {
           { text: "30m", callback_data: "delay:m:30" },
         ],
         [
-          { text: "1h", callback_data: "delay:m:60" },
-          { text: "2h", callback_data: "delay:m:120" },
-          { text: "3h", callback_data: "delay:m:180" },
+          { text: "1h", callback_data: "delay:h:1" },
+          { text: "2h", callback_data: "delay:h:2" },
+          { text: "3h", callback_data: "delay:h:3" },
         ],
-        [{ text: "6h", callback_data: "delay:m:360" }],
+        [{ text: "6h", callback_data: "delay:h:6" }],
       ],
     },
   });
 });
 
-bot.action(/delay:(s|m):(\d+)/, async (ctx) => {
+bot.action(/delay:(s|m|h):(\d+)/, async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_ID) {
     ctx.answerCbQuery("⚠️ Not enough rights.");
     return;
@@ -73,8 +73,10 @@ bot.action(/delay:(s|m):(\d+)/, async (ctx) => {
 
   if (type === "s") {
     scheduler.schedule({ seconds: value });
-  } else {
+  } else if (type === "m") {
     scheduler.schedule({ minutes: value });
+  } else {
+    scheduler.schedule({ hours: value })
   }
 
   await ctx.editMessageText(

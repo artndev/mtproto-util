@@ -1,4 +1,5 @@
 import { Telegraf } from "telegraf";
+import { formatInterval } from "./utils.js";
 import * as cron from "node-cron";
 import * as CONSTANTS from "./constants.js";
 
@@ -30,10 +31,15 @@ export class Scheduler {
     this.schedule({ minutes: this.currentInterval });
   }
 
-  public schedule(data: { minutes?: number; seconds?: number }): void {
+  public schedule(data: {
+    hours?: number;
+    minutes?: number;
+    seconds?: number;
+  }): void {
     try {
+      const hours = data.hours ?? 0;
       const minutes = data.minutes ?? 0;
-      const seconds = minutes * 60 + (data.seconds ?? 0);
+      const seconds = hours * 3600 + minutes * 60 + (data.seconds ?? 0);
 
       if (seconds <= 0) {
         console.warn("⚠️ Schedule skipped: interval is 0.");
@@ -50,12 +56,19 @@ export class Scheduler {
       }
 
       this.currentInterval = seconds;
-      this.scheduler = cron.schedule(
-        `*/${this.currentInterval} * * * * *`,
-        () => {
-          this.rotate();
-        },
-      );
+
+      let cronPattern = "";
+      if (this.currentInterval < 60) {
+        cronPattern = `*/${this.currentInterval} * * * * *`;
+      } else if (this.currentInterval < 3600) {
+        cronPattern = `*/${Math.floor(this.currentInterval / 60)} * * * *`;
+      } else {
+        cronPattern = `0 */${Math.floor(this.currentInterval / 3600)} * * *`;
+      }
+
+      this.scheduler = cron.schedule(cronPattern, () => {
+        this.rotate();
+      });
     } catch (err) {
       console.error(`❌ ${err}`);
     }
@@ -104,7 +117,7 @@ export class Scheduler {
         this.groupId,
         `*Fresh MTProto arrived\\!*\n\n` +
           `Location: NL 🇳🇱\n` +
-          `Rotation In: \\~${Math.ceil(this.currentInterval / 60)}m\n\n` +
+          `Rotation In: \\~${formatInterval(this.currentInterval)}\n\n` +
           `\`${CONSTANTS.ESCAPE_M2(proxy)}\``,
         {
           parse_mode: "MarkdownV2",
