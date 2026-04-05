@@ -1,7 +1,5 @@
 import "dotenv/config";
 import { Telegraf } from "telegraf";
-import * as cron from "node-cron";
-import * as CONSTANTS from "./constants.js";
 import { Scheduler } from "./scheduler.js";
 
 const { BOT_TOKEN, GROUP_ID, ADMIN_ID } = process.env;
