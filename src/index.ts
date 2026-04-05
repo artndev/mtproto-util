@@ -1,113 +1,113 @@
 import "dotenv/config";
 import { Telegraf } from "telegraf";
-import { exec } from "child_process";
-import { promisify } from "util";
-import cron from "node-cron";
-
-const EXEC_PROMISE = promisify(exec);
-const ESCAPE_M2 = (text: string) =>
-  text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+import * as cron from "node-cron";
+import * as CONSTANTS from "./constants.js";
+import { Scheduler } from "./scheduler.js";
 
 const { BOT_TOKEN, GROUP_ID, ADMIN_ID } = process.env;
 if (!BOT_TOKEN || !GROUP_ID || !ADMIN_ID) {
-  throw new Error("ENV variables aren't configured");
+  throw new Error("❌ ENV variables are missing");
 }
 
 const bot = new Telegraf(BOT_TOKEN);
-const refreshProxy = async (): Promise<void> => {
-  try {
-    const sh = `
-      DOMAIN="ya.ru"
-      PORT="9443"
-
-      SECRET=$(docker run --rm nineseconds/mtg:2 generate-secret --hex $DOMAIN)
-      IP=$(curl -s4 -m 3 https://api.ipify.org || \
-           curl -s4 -m 3 https://ifconfig.me || \
-           curl -s4 -m 3 https://checkip.amazonaws.com || \
-           echo "0.0.0.0")
-      if [ "$IP" = "0.0.0.0" ]; then
-        echo "Couldn't retrieve IP from providers."
-        exit 1
-      fi
-
-      docker rm -f mtproto-proxy >/dev/null 2>&1 || true
-
-      docker run -d \
-        --name mtproto-proxy \
-        --restart always \
-        -p $PORT:$PORT \
-        nineseconds/mtg:2 \
-        simple-run -n 1.1.1.1 -i prefer-ipv4 0.0.0.0:$PORT $SECRET
-
-      echo "tg://proxy?server=$IP&port=$PORT&secret=$SECRET"
-    `;
-
-    const { stdout } = await EXEC_PROMISE(sh);
-    const lines = stdout.trim().split("\n");
-    const proxy = lines.find(line => line.trim().startsWith("tg://"));
-    if (!proxy) {
-      console.log("Proxy is failed: ", stdout);
-      return;
-    }
-
-    await bot.telegram.sendMessage(
-      GROUP_ID,
-      `*Fresh MTProto arrived\\!*\n\n` +
-        `Location: NL 🇳🇱\n` +
-        `Rotation In: 30m\n\n` +
-        `\`${ESCAPE_M2(proxy)}\``,
-      {
-        parse_mode: "MarkdownV2",
-        reply_markup: {
-          inline_keyboard: [[{ text: "Connect", url: proxy }]],
-        },
-      },
-    );
-  } catch (err) {
-    console.error(err);
-  }
-};
+const scheduler = new Scheduler(bot, GROUP_ID, 30);
 
 bot.command("refresh", async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_ID) {
-    await ctx.reply("Not enough rights!", {
+    await ctx.reply("⚠️ Not enough rights.", {
       reply_parameters: { message_id: ctx.message.message_id },
     });
     return;
   }
 
-  const msg = await ctx.reply("Refreshing MTProto... please wait ~10s =)", {
+  const msg = await ctx.reply("🔄 Refreshing MTProto ~10s...", {
+    parse_mode: "HTML",
     reply_parameters: { message_id: ctx.message.message_id },
   });
 
-  refreshProxy()
+  scheduler
+    .rotate()
     .then(async () => {
-      try {
-        await ctx.deleteMessage(msg.message_id);
-      } catch (err) {}
+      await ctx.deleteMessage(msg.message_id).catch(() => {});
     })
     .catch(async (err) => {
       console.error(err);
 
-      await ctx.reply("Server is not responding...");
+      await ctx.reply("❌ Server is not responding...");
     });
+});
+
+bot.command("delay", async (ctx) => {
+  await ctx.reply("🔄 Set the scheduler interval in minutes:", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "10s (ONLY FOR TESTING)", callback_data: "delay:s:10" }],
+        [
+          { text: "5m", callback_data: "delay:m:5" },
+          { text: "15m", callback_data: "delay:m:15" },
+          { text: "30m", callback_data: "delay:m:30" },
+        ],
+        [
+          { text: "1h", callback_data: "delay:m:60" },
+          { text: "2h", callback_data: "delay:m:120" },
+          { text: "3h", callback_data: "delay:m:180" },
+        ],
+        [{ text: "6h", callback_data: "delay:m:360" }],
+      ],
+    },
+  });
+});
+
+bot.action(/delay:(s|m):(\d+)/, async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_ID) {
+    ctx.answerCbQuery("⚠️ Not enough rights.");
+    return;
+  }
+
+  const type = ctx.match[1];
+  const value = Number(ctx.match[2]);
+  if (isNaN(value)) {
+    ctx.answerCbQuery(
+      "⚠️ Pass the actual number representing your interval in minutes.",
+    );
+    return;
+  }
+
+  if (type === "s") {
+    scheduler.schedule({ seconds: value });
+  } else {
+    scheduler.schedule({ minutes: value });
+  }
+
+  await ctx.editMessageText(
+    `✅ Scheduler interval was updated to ${value}${type}.`,
+    { parse_mode: "HTML" },
+  );
+
+  setTimeout(async () => {
+    try {
+      await ctx.deleteMessage().catch(() => {});
+    } catch (err) {
+      console.error(err);
+
+      await ctx.reply("❌ Server is not responding...");
+    }
+  }, 2500);
 });
 
 (async () => {
   try {
     bot.launch().catch((err) => {
-      console.log(err)
+      console.log(err);
 
       process.exit(1);
     });
 
-    refreshProxy();
-
-    cron.schedule("*/30 * * * *", async () => {
-      refreshProxy().catch((err) => console.error(err));
-    });
+    scheduler.init();
   } catch (err) {
     console.error(err);
+
+    process.exit(1);
   }
 })();
 
